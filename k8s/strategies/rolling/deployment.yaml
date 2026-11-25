@@ -1,0 +1,64 @@
+# =====================================================================
+# ROLLING UPDATE: replace pods a few at a time. Old and new versions
+# serve together for a while; there is never a moment with zero pods.
+# Upgrade:  kubectl -n color-demo set image deploy/color-backend app=color-backend:v2
+# =====================================================================
+apiVersion: apps/v1                     # Deployments live in the "apps" API group
+kind: Deployment                        # manages ReplicaSets, which manage pods
+metadata:                               # identifying data of the Deployment
+  name: color-backend                   # Deployment name (pods are named color-backend-<hash>-<id>)
+  namespace: color-demo                 # where it lives
+  labels:                               # labels on the Deployment object
+    app: color-backend                  # lets `make reset` find and delete it
+  annotations:                          # non-identifying notes attached to the object
+    kubernetes.io/change-cause: "initial deploy: v1"  # shown by `kubectl rollout history`
+spec:                                   # desired state
+  replicas: 6                           # keep 6 pods (6 boxes on the dashboard)
+  revisionHistoryLimit: 5               # keep 5 old ReplicaSets so `rollout undo` can go back
+  minReadySeconds: 3                    # a new pod must stay Ready 3 s before it counts as available
+  progressDeadlineSeconds: 60           # mark the rollout as failed if it makes no progress for 60 s
+  strategy:                             # HOW pods are replaced when the template changes
+    type: RollingUpdate                 # replace gradually (the default strategy)
+    rollingUpdate:                      # knobs of the rolling update
+      maxSurge: 1                       # at most 1 pod ABOVE 6 during the update (so 7 max)
+      maxUnavailable: 0                 # never go BELOW 6 available pods → zero downtime
+  selector:                             # which pods belong to this Deployment
+    matchLabels:                        # pods must carry all these labels
+      app: color-backend                # the label set in the template below
+  template:                             # blueprint of every pod
+    metadata:                           # pod metadata
+      labels:                           # pod labels
+        app: color-backend              # matched by the selector above AND by the Service
+    spec:                               # pod specification
+      terminationGracePeriodSeconds: 30 # after SIGTERM, wait up to 30 s before SIGKILL
+      containers:                       # containers in the pod
+        - name: app                     # container name (used by `kubectl set image ... app=...`)
+          image: color-backend:v1       # the version: change this tag to upgrade
+          imagePullPolicy: IfNotPresent # use the image loaded into kind; don't pull from a registry
+          ports:                        # ports the container listens on
+            - name: http                # name referenced by probes and by the Service
+              containerPort: 8080       # the Go server's port
+          env:                          # environment variables for the app
+            - name: STARTUP_DELAY       # how long the app stays "not ready" after start
+              value: "5s"               # slow enough for students to watch each step
+          readinessProbe:               # "may this pod receive traffic?" (controls Service endpoints)
+            httpGet:                    # check over HTTP...
+              path: /readyz             # ...this path (503 until STARTUP_DELAY has passed)
+              port: http                # ...on the named port
+            periodSeconds: 1            # check every second, so Ready shows up quickly
+            failureThreshold: 1         # one failed check → not ready
+          livenessProbe:                # "is the process still alive?" (failing → restart)
+            httpGet:                    # check over HTTP...
+              path: /healthz            # ...the always-OK endpoint
+              port: http                # ...on the named port
+            periodSeconds: 10           # check every 10 seconds
+          lifecycle:                    # hooks around the container's life
+            preStop:                    # runs BEFORE SIGTERM is sent
+              sleep:                    # built-in sleep action (no shell needed in distroless)
+                seconds: 3              # give kube-proxy 3 s to stop routing here → no failed requests
+          resources:                    # resource reservations and limits
+            requests:                   # reserved by the scheduler
+              cpu: 10m                  # 1% of a CPU core
+              memory: 16Mi              # 16 MiB RAM
+            limits:                     # hard ceiling
+              memory: 64Mi              # killed (OOM) above 64 MiB

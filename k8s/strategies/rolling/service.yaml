@@ -1,0 +1,20 @@
+# =====================================================================
+# Service "color-backend": one stable virtual IP + DNS name in front of
+# whatever backend pods are READY right now. The dashboard's traffic
+# prober calls http://color-backend/api/color, which lands here.
+# =====================================================================
+apiVersion: v1                 # Services are core v1 objects
+kind: Service                  # load-balances to a changing set of pods
+metadata:                      # identifying data
+  name: color-backend          # DNS name inside the namespace: "color-backend"
+  namespace: color-demo        # where it lives
+  labels:                      # labels on the Service object itself
+    app: color-backend         # lets `make reset` delete it together with the Deployments
+spec:                          # desired state
+  type: ClusterIP              # reachable only inside the cluster (the dashboard is inside)
+  selector:                    # traffic goes to READY pods carrying these labels
+    app: color-backend         # every backend pod of this strategy
+  ports:                       # port mapping list
+    - name: http               # port name
+      port: 80                 # clients call port 80 on the Service...
+      targetPort: http         # ...which forwards to the container port named "http" (8080)

@@ -1,0 +1,22 @@
+# =====================================================================
+# PREVIEW Service: always points at GREEN, so the team can test the new
+# version inside the cluster BEFORE switching real users to it:
+#   kubectl -n color-demo run tmp --rm -it --image=curlimages/curl --restart=Never \
+#     -- curl -s http://color-backend-preview/api/color
+# =====================================================================
+apiVersion: v1                 # Services are core v1 objects
+kind: Service                  # stable address in front of pods
+metadata:                      # identifying data
+  name: color-backend-preview  # a second, test-only name
+  namespace: color-demo        # where it lives
+  labels:                      # labels on the Service object
+    app: color-backend         # lets `make reset` delete it
+spec:                          # desired state
+  type: ClusterIP              # internal only
+  selector:                    # which pods get the traffic
+    app: color-backend         # backend pods...
+    slot: green                # ...of the GREEN slot (the candidate)
+  ports:                       # port mapping list
+    - name: http               # port name
+      port: 80                 # Service port
+      targetPort: http         # container port named "http" (8080)

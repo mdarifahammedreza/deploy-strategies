@@ -1,0 +1,19 @@
+# =====================================================================
+# Canary Service: selects ONLY `app`, NOT `track`, so stable AND canary
+# pods both receive traffic. More canary pods = bigger canary share.
+# =====================================================================
+apiVersion: v1                 # Services are core v1 objects
+kind: Service                  # stable address in front of pods
+metadata:                      # identifying data
+  name: color-backend          # the name users (and the dashboard prober) call
+  namespace: color-demo        # where it lives
+  labels:                      # labels on the Service object
+    app: color-backend         # lets `make reset` delete it
+spec:                          # desired state
+  type: ClusterIP              # internal virtual IP
+  selector:                    # which pods get the traffic
+    app: color-backend         # stable + canary pods alike (no `track` here on purpose!)
+  ports:                       # port mapping list
+    - name: http               # port name
+      port: 80                 # Service port
+      targetPort: http         # container port named "http" (8080)

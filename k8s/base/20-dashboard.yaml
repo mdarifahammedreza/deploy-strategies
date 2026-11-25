@@ -1,0 +1,72 @@
+# =====================================================================
+# The dashboard: one pod that watches backend pods, probes traffic,
+# and serves the live web page. Exposed on NodePort 30080.
+# =====================================================================
+apiVersion: apps/v1                         # Deployments live in the "apps" API group
+kind: Deployment                            # keeps N copies of a pod running and handles upgrades
+metadata:                                   # identifying data of the Deployment
+  name: color-dashboard                     # Deployment name
+  namespace: color-demo                     # where it lives
+  labels:                                   # labels on the Deployment object itself
+    app: color-dashboard                    # NOT "color-backend", so the dashboard never draws itself
+spec:                                       # desired state
+  replicas: 1                               # one dashboard is enough
+  selector:                                 # how the Deployment finds "its" pods
+    matchLabels:                            # pods must carry ALL these labels
+      app: color-dashboard                  # ...this one
+  template:                                 # blueprint for every pod this Deployment creates
+    metadata:                               # metadata of the created pods
+      labels:                               # pod labels (must match the selector above)
+        app: color-dashboard                # matches spec.selector.matchLabels
+    spec:                                   # pod specification
+      serviceAccountName: color-dashboard   # run with the identity that may read pods (see RBAC file)
+      containers:                           # the containers in the pod (just one)
+        - name: dashboard                   # container name
+          image: color-dashboard:dev        # image built by `make images`, loaded by `make load`
+          imagePullPolicy: IfNotPresent     # use the image kind already has; never pull from the internet
+          ports:                            # ports the container listens on
+            - name: http                    # a name we can refer to instead of the number
+              containerPort: 8081           # the Go server listens here
+          env:                              # environment variables → dashboard settings
+            - name: NAMESPACE               # which namespace to watch...
+              valueFrom:                    # ...taken from the pod itself (Downward API)
+                fieldRef:                   # reference a field of this pod
+                  fieldPath: metadata.namespace  # = "color-demo"
+            - name: POD_SELECTOR            # which pods are "backend boxes"
+              value: app=color-backend      # every strategy labels its pods with this
+            - name: TARGET_URL              # where the traffic prober sends requests
+              value: http://color-backend/api/color  # the Service named color-backend (DNS name)
+            - name: BACKEND_PORT            # port used to talk to each pod IP directly
+              value: "8080"                 # quoted: env values must be strings
+            - name: PROBE_RPS               # requests per second sent through the Service
+              value: "20"                   # 20 req/s → the bar reacts within a few seconds
+            - name: WINDOW_SIZE             # how many recent requests the traffic bar counts
+              value: "100"                  # 100 requests ≈ the last 5 seconds
+          readinessProbe:                   # "may this pod receive traffic?"
+            httpGet:                        # ask over HTTP...
+              path: /healthz                # ...this path...
+              port: http                    # ...on the port named "http"
+            periodSeconds: 5                # ask every 5 seconds
+          resources:                        # CPU / memory reservations and limits
+            requests:                       # what the scheduler reserves on a node
+              cpu: 20m                      # 2% of one CPU core
+              memory: 32Mi                  # 32 MiB of RAM
+            limits:                         # hard ceiling
+              memory: 128Mi                 # the container is killed if it uses more RAM than this
+---
+apiVersion: v1                              # Services are core v1 objects
+kind: Service                               # a stable address in front of changing pods
+metadata:                                   # identifying data
+  name: color-dashboard                     # Service name (DNS: color-dashboard.color-demo.svc)
+  namespace: color-demo                     # where it lives
+  labels:                                   # labels on the Service object
+    app: color-dashboard                    # not color-backend, so `make reset` leaves it alone
+spec:                                       # desired state
+  type: NodePort                            # open a port on every node (30000-32767)
+  selector:                                 # send traffic to pods with these labels
+    app: color-dashboard                    # the dashboard pod
+  ports:                                    # port mapping list
+    - name: http                            # port name
+      port: 80                              # port of the Service inside the cluster
+      targetPort: http                      # forward to the container port named "http" (8081)
+      nodePort: 30080                       # fixed node port; kind maps it to localhost:30080

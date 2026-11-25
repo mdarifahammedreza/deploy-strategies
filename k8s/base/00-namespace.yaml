@@ -1,0 +1,10 @@
+# =====================================================================
+# Namespace: a "folder" inside the cluster for every object of this demo.
+# Deleting the namespace deletes everything in it.
+# =====================================================================
+apiVersion: v1                 # Namespaces belong to the core API group, version v1
+kind: Namespace                # the type of object we create
+metadata:                      # identifying data about the object
+  name: color-demo             # the namespace name; every other manifest uses it
+  labels:                      # key/value tags, useful for selecting objects later
+    purpose: teaching          # free-form label marking this as a classroom namespace

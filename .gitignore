@@ -1,0 +1,10 @@
+# dependencies and build output
+node_modules/
+dist/
+# editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+# go test artefacts
+*.out
+*.test

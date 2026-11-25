@@ -1,0 +1,33 @@
+# =====================================================================
+# RBAC for the dashboard: "the dashboard pod may READ pods in color-demo".
+# ServiceAccount = identity, Role = permissions, RoleBinding = glue.
+# =====================================================================
+apiVersion: v1                            # ServiceAccount is a core (v1) object
+kind: ServiceAccount                      # an identity that processes inside pods use
+metadata:                                 # identifying data
+  name: color-dashboard                   # the dashboard Deployment refers to this name
+  namespace: color-demo                   # ServiceAccounts live inside a namespace
+---
+apiVersion: rbac.authorization.k8s.io/v1  # API group for RBAC objects
+kind: Role                                # permissions that apply inside ONE namespace
+metadata:                                 # identifying data
+  name: pod-reader                        # name of this permission set
+  namespace: color-demo                   # the permissions only work in this namespace
+rules:                                    # list of allowed actions
+  - apiGroups: [""]                       # "" = core API group, where Pods live
+    resources: ["pods"]                   # the object type this rule covers
+    verbs: ["get", "list", "watch"]       # read-only: fetch one, list all, stream changes
+---
+apiVersion: rbac.authorization.k8s.io/v1  # RBAC API group again
+kind: RoleBinding                         # gives a Role to a user / group / ServiceAccount
+metadata:                                 # identifying data
+  name: color-dashboard-reads-pods        # descriptive name of the binding
+  namespace: color-demo                   # must be the same namespace as the Role
+subjects:                                 # WHO receives the permissions
+  - kind: ServiceAccount                  # the receiver is a ServiceAccount...
+    name: color-dashboard                 # ...named color-dashboard...
+    namespace: color-demo                 # ...in this namespace
+roleRef:                                  # WHICH permissions they receive
+  apiGroup: rbac.authorization.k8s.io     # API group of the referenced Role
+  kind: Role                              # we point at a Role (not a ClusterRole)
+  name: pod-reader                        # the Role defined above

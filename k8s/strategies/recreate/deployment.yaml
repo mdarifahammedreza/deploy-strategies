@@ -1,0 +1,55 @@
+# =====================================================================
+# RECREATE: kill ALL old pods first, THEN start the new ones.
+# Simple, never runs two versions at once, but users see DOWNTIME.
+# Upgrade:  kubectl -n color-demo set image deploy/color-backend app=color-backend:v2
+# =====================================================================
+apiVersion: apps/v1                     # Deployments live in the "apps" API group
+kind: Deployment                        # manages ReplicaSets, which manage pods
+metadata:                               # identifying data
+  name: color-backend                   # same name as in the rolling example: only the strategy differs
+  namespace: color-demo                 # where it lives
+  labels:                               # labels on the Deployment object
+    app: color-backend                  # lets `make reset` find and delete it
+  annotations:                          # notes attached to the object
+    kubernetes.io/change-cause: "initial deploy: v1"  # shown by `kubectl rollout history`
+spec:                                   # desired state
+  replicas: 6                           # keep 6 pods
+  revisionHistoryLimit: 5               # remember 5 old versions for `rollout undo`
+  strategy:                             # HOW pods are replaced
+    type: Recreate                      # delete every old pod, wait until they are gone, then create new ones
+  selector:                             # which pods belong to this Deployment
+    matchLabels:                        # pods must carry these labels
+      app: color-backend                # the label from the template below
+  template:                             # blueprint of every pod
+    metadata:                           # pod metadata
+      labels:                           # pod labels
+        app: color-backend              # matched by the selector and by the Service
+    spec:                               # pod specification
+      terminationGracePeriodSeconds: 30 # after SIGTERM, wait up to 30 s before SIGKILL
+      containers:                       # containers in the pod
+        - name: app                     # container name (used by `kubectl set image`)
+          image: color-backend:v1       # the version: change this tag to upgrade
+          imagePullPolicy: IfNotPresent # use the image loaded into kind
+          ports:                        # ports the container listens on
+            - name: http                # name referenced by probes and the Service
+              containerPort: 8080       # the Go server's port
+          env:                          # environment variables for the app
+            - name: STARTUP_DELAY       # "not ready" period after start
+              value: "5s"               # makes the downtime gap clearly visible
+          readinessProbe:               # "may this pod receive traffic?"
+            httpGet:                    # check over HTTP...
+              path: /readyz             # ...the readiness endpoint
+              port: http                # ...on the named port
+            periodSeconds: 1            # every second
+            failureThreshold: 1         # one failure → not ready
+          livenessProbe:                # "is the process alive?"
+            httpGet:                    # check over HTTP...
+              path: /healthz            # ...the always-OK endpoint
+              port: http                # ...on the named port
+            periodSeconds: 10           # every 10 seconds
+          resources:                    # resource reservations and limits
+            requests:                   # reserved by the scheduler
+              cpu: 10m                  # 1% of a CPU core
+              memory: 16Mi              # 16 MiB RAM
+            limits:                     # hard ceiling
+              memory: 64Mi              # killed above 64 MiB

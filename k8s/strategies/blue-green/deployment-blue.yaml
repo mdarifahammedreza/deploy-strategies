@@ -1,0 +1,52 @@
+# =====================================================================
+# BLUE/GREEN, part 1: "blue" = the version users get TODAY (v1).
+# Blue and green are two complete, separate Deployments. The Service
+# decides which one is live by its `slot` label selector.
+# =====================================================================
+apiVersion: apps/v1                     # Deployments live in the "apps" API group
+kind: Deployment                        # manages the blue pods
+metadata:                               # identifying data
+  name: color-backend-blue              # one Deployment per color
+  namespace: color-demo                 # where it lives
+  labels:                               # labels on the Deployment object
+    app: color-backend                  # lets `make reset` find it
+    slot: blue                          # which slot this Deployment fills
+spec:                                   # desired state
+  replicas: 4                           # full production capacity
+  selector:                             # which pods belong to this Deployment
+    matchLabels:                        # must carry BOTH labels
+      app: color-backend                # common app label
+      slot: blue                        # only blue pods → blue and green never adopt each other's pods
+  template:                             # blueprint of every blue pod
+    metadata:                           # pod metadata
+      labels:                           # pod labels
+        app: color-backend              # the dashboard watches this label
+        slot: blue                      # the Service selects on this label
+    spec:                               # pod specification
+      terminationGracePeriodSeconds: 30 # after SIGTERM, wait up to 30 s before SIGKILL
+      containers:                       # containers in the pod
+        - name: app                     # container name
+          image: color-backend:v1       # blue runs the current version
+          imagePullPolicy: IfNotPresent # use the image loaded into kind
+          ports:                        # ports the container listens on
+            - name: http                # named port
+              containerPort: 8080       # the Go server's port
+          env:                          # environment variables
+            - name: STARTUP_DELAY       # "not ready" period after start
+              value: "5s"               # visible Starting phase
+          readinessProbe:               # "may this pod receive traffic?"
+            httpGet:                    # over HTTP...
+              path: /readyz             # ...the readiness endpoint
+              port: http                # ...on the named port
+            periodSeconds: 1            # every second
+            failureThreshold: 1         # one failure → not ready
+          lifecycle:                    # container hooks
+            preStop:                    # before SIGTERM...
+              sleep:                    # ...just wait...
+                seconds: 3              # ...3 s so routing updates first
+          resources:                    # reservations and limits
+            requests:                   # reserved by the scheduler
+              cpu: 10m                  # 1% of a CPU core
+              memory: 16Mi              # 16 MiB RAM
+            limits:                     # hard ceiling
+              memory: 64Mi              # killed above 64 MiB
