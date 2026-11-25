@@ -8,3 +8,6 @@ dist/
 # go test artefacts
 *.out
 *.test
+
+# documentation is kept local only (not published)
+docs/
