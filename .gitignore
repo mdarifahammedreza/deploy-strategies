@@ -9,5 +9,5 @@ dist/
 *.out
 *.test
 
-# documentation is kept local only (not published)
-docs/
+# internal planning notes (kept local only)
+docs/superpowers/
